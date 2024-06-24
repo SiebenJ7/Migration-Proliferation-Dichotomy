@@ -6,6 +6,6 @@ The Interplay Model accounts for the co-evolution of glioma cell density, oxygen
 
 We compute the "Baseline Cell Density Model" and the "Interplay Model". We show numerical solutions for the baseline Fisher-Kolmogoroff model for glioma cell density and solutions for the complete model for glioma cell density, oxygen concentration and density of functional vasculature. 
 
-In the Fisher-Kolmogoroff Model, we vary the diffusion rate, $D_\rho$, and the proliferation rate, $b_\rho$ of glioma cells.
+In the Fisher-Kolmogoroff Model, we vary the diffusion rate, $D_\rho$, and the proliferation rate, $b_\rho$, of glioma cells.
 In the Interplay Model, we additionally vary the oxygen consumption rate, $h_2$, and the vaso-occlusion rate, $g_2$.
 
