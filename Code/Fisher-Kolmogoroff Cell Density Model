@@ -1,1 +1,189 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jun 21 21:02:50 2024
 
+@author: JuliusSiebenaller
+"""
+import numpy as np
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
+
+# Specify the parameters and give the version a proper name:
+#version = 'baseline' # Baseline version with respective parameters
+#version = 'allmax' # Dp, bp at maximal values
+#version = 'Dp' # Dp at max, bp at baseline
+version = 'bp' # bp at max, Dp at baseline
+
+
+# Parameters  
+# Compare Table 1 in the paper
+
+# Parameters that changed for different cases:
+Dp = 2.73e-2 # Intrinsic diffusion rate of glioma cells in mm^2 per day
+    # Range: 2.73e-3 to 2.73e-1 for low- to high-grade gliomas 
+    # Baseline: 2.73e-2
+bp = 2.73e-2 # Intrinsic proliferation rate of glioma cells
+    # Range: 2.73e-4 to 2.73e-2 for low- to high-grade gliomas 
+    # Baseline: 2.73e-3
+
+# Constant parameters 
+#Initial values for Vascular Density v0, Oxygen concentration o0, cell density p0
+v0 = 0.5  # nmol per mm in the simulation domain
+o0 = 1.0  # nmol per mm     
+p0 = 40.  # cells per mm
+
+# Density of glioma cells: p(x,t)
+BCC = 100.  # Brain carrying capacity in cells per mm (N in the model)    
+l1 = 2.0 # nmol per mm (Lamda_1 in the paper)      
+l2 = 1.0 # Lambda_2
+
+
+
+# Define the reaction terms
+def reaction_terms(p):
+    p_reaction = bp * o0/l1 * p * (1-p/BCC)
+
+    return p_reaction
+
+# Define the system of ODEs resulting from discretization
+def odes(t, y, x, Dp, dx):
+    N = len(x)
+    p = y[:N]
+
+    # Compute first and second derivatives using central difference
+    dp_dx = np.gradient(p, dx)
+    d2p_dx2 = np.gradient(dp_dx, dx)
+
+    # Apply Neumann boundary conditions (zero flux)
+    dp_dx[0] = 0
+    dp_dx[-1] = 0
+    d2p_dx2[0] = d2p_dx2[1]
+    d2p_dx2[-1] = d2p_dx2[-2]
+
+    # Compute reaction terms
+    p_reaction = reaction_terms(p)
+
+    # Combine diffusion and reaction terms
+    Nabla_alpha_p = (l1-o0)/l1 * d2p_dx2
+    dpdt = Dp*Nabla_alpha_p + p_reaction
+
+    return np.concatenate([dpdt])
+
+
+# Initial conditions
+gamma = 1.e1
+eps = 0.5
+def initial_conditions(x):
+    p_0 = p0 * (1. - 1. / (1+ np.exp(-2.*gamma*(x-eps))))  # Initial distribution for p0
+    return np.concatenate([p_0])
+
+
+# Spatial domain and time span
+x = np.linspace(0, 200, 1000)
+t_span = (0, 1000)
+dx = x[1] - x[0]
+y0 = initial_conditions(x)
+
+# Solve the system of ODEs
+sol = solve_ivp(odes, t_span, y0, args=(x, Dp, dx), t_eval=np.linspace(0, 1000, 1000), method='RK45')
+
+# Extract solutions
+p_sol = sol.y[:len(x), :]
+np.save('FisherSol_p' + version + '.npy', p_sol) # Save the results for the given version
+    # This makes for faster plotting after initial compilation.
+
+# Plot results
+X, T = np.meshgrid(x, sol.t)
+
+fig, ax = plt.subplots(3, 1, figsize=(10, 8))
+
+cfp = ax[0].contourf(X, T, p_sol.T, levels=50, cmap='viridis')
+fig.colorbar(cfp, ax=ax[0], label=r"\rho(x,t)")
+ax[0].set_title(r"Cell Density $\rho(x,t)$ in cells per mm")
+ax[0].set_xlabel("Position $x$ in mm")
+ax[0].set_ylabel("Time $t$ in days")
+#plt.title('Solution of Fisher-Kolmogoroff Model')
+
+cfo = ax[1].contourf(X, T, p_sol.T, levels=50, cmap='viridis')
+fig.colorbar(cfo, ax=ax[1], label=r"\rho(x,t)")
+#ax[1].set_title('Solution p(x,t)')
+ax[1].set_xlabel('Position $x$ in $mm$')
+ax[1].set_ylabel('Time $t$ in days')
+ax[1].set_xlim(0,100)
+#ax[1].set_ylim(0,300)
+
+cfv = ax[2].contourf(X, T, p_sol.T, levels=50, cmap='viridis')
+fig.colorbar(cfv, ax=ax[2], label=r"\rho(x,t)")
+#ax[2].set_title('Solution p(x,t)')
+ax[2].set_xlabel('Position $x$ in $mm$')
+ax[2].set_ylabel('Time $t$ in days')
+ax[2].set_xlim(0,50)
+#ax[2].set_ylim(0,150)
+
+plt.tight_layout()
+plt.savefig('FK_Model_Contour' + version + '.png')
+plt.show()
+
+# Plotting
+
+plt.figure()
+t_end = len(T)
+for i in range(0, t_end, int(t_end/10)):
+    #plt.plot(x, p_sol[i], label=f"t = {T[i]:.1f} days")
+    plt.plot(X[i,:], p_sol[:,i], label=f"t = {i} days")
+plt.plot(X[-1,:], p_sol[:,-1], label=f"t = {1000} days")
+plt.title(r"Cell Density $\rho(x,t)$")
+#plt.xlim(0,50)
+#plt.ylim(0,40)
+plt.xlabel(r"Position $x$ in mm")
+plt.ylabel(r"Density $\rho(x, t)$ in cells per mm")
+plt.legend()
+plt.grid(True)
+plt.savefig('FK_Model_Dist' + version + '.png')
+plt.show()
+
+plt.figure()
+for i in range(0, t_end, int(t_end/10)):
+    #plt.plot(x, p_sol[i], label=f"t = {T[i]:.1f} days")
+    plt.plot(X[i,:], p_sol[:,i], label=f"t = {i} days")
+plt.plot(X[-1,:], p_sol[:,-1], label=f"t = {1000} days")
+plt.title(r"Cell Density $\rho(x,t)$")
+plt.xlim(0,100)
+#plt.ylim(0,17.50)
+plt.xlabel(r"Position $x$ in mm")
+plt.ylabel(r"Density $\rho(x, t)$ in cells per $mm$")
+plt.legend()
+plt.grid(True)
+plt.savefig('FK_Model_Dist_Zoom' + version + '.png')
+plt.show()
+
+plt.figure()
+for i in range(0, t_end, int(t_end/10)):
+    #plt.plot(x, p_sol[i], label=f"t = {T[i]:.1f} days")
+    plt.plot(X[i,:], p_sol[:,i], label=f"t = {i} days")
+plt.plot(X[-1,:], p_sol[:,-1], label=f"t = {1000} days")
+plt.title(r"Cell Density $\rho(x,t)$")
+plt.xlim(0,50)
+#plt.ylim(0,17.50)
+plt.xlabel(r"Position $x$ in mm")
+plt.ylabel(r"Density $\rho(x, t)$ in cells per $mm$")
+plt.legend()
+plt.grid(True)
+plt.savefig('FK_Model_Dist_ZoomII' + version + '.png')
+plt.show()
+
+plt.figure()
+for i in range(0, t_end, int(t_end/10)):
+    #plt.plot(x, p_sol[i], label=f"t = {T[i]:.1f} days")
+    plt.plot(X[i,:], p_sol[:,i], label=f"t = {i} days")
+plt.plot(X[-1,:], p_sol[:,-1], label=f"t = {1000} days")
+plt.title(r"Cell Density $\rho(x,t)$")
+plt.xlim(0,25)
+#plt.ylim(0,17.50)
+plt.xlabel(r"Position $x$ in mm")
+plt.ylabel(r"Density $\rho(x, t)$ in cells per $mm$")
+plt.legend()
+plt.grid(True)
+plt.savefig('FK_Model_Dist_ZoomIII' + version + '.png')
+plt.show()
